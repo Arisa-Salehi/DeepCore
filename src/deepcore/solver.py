@@ -284,11 +284,115 @@ def iterative_deepening_search(
 # 3. Bidirectional Search
 # =============================================================================
 def bidirectional_search(env: DeepCoreEnv) -> Optional[SearchMetrics]:
+    """Step-optimal directed bidirectional BFS with *certified* termination.
+
+    The environment supplies only selected canonical reverse goals, not every
+    legal terminal configuration. Intersections alone cannot certify optimality.
+    We therefore retain the best meeting/forward-goal path, and keep expanding
+    complete forward BFS layers until ALL forward paths shorter than the
+    incumbent have been examined. This forward-depth stopping certificate is
+    sound even when the reverse goal seeds are incomplete. Reverse exploration
+    always calls env.get_predecessors; forward exploration calls successors.
     """
-    TODO: Implement Bidirectional Search expanding forward from `env.get_initial_state()`
-    via `env.get_successors(s)` and backward from `env.get_goal_states()` via `env.get_predecessors(s)`.
-    """
-    raise NotImplementedError
+    metrics = SearchMetrics(algorithm_name="Bidirectional")
+    start = env.get_initial_state()
+    if env.is_goal(start):
+        metrics.solved = True
+        metrics.status_message = "Solved."
+        return metrics
+
+    f_depth = {start: 0}
+    f_parent = {start: (None, None)}
+    f_frontier = [start]
+    b_depth = {}
+    b_next = {}
+    b_frontier = []
+    for goal in env.get_goal_states():
+        if goal not in b_depth:
+            b_depth[goal] = 0
+            b_next[goal] = (None, None)
+            b_frontier.append(goal)
+    best_length = math.inf
+    best_meet = None
+    best_is_goal = False
+
+    def stats():
+        metrics.max_frontier_size = max(metrics.max_frontier_size,
+                                        len(f_frontier) + len(b_frontier))
+        metrics.max_memory_size = max(metrics.max_memory_size,
+                                      len(f_depth) + len(b_depth))
+
+    def candidate(node, length, is_goal=False):
+        nonlocal best_length, best_meet, best_is_goal
+        if length < best_length:
+            best_length, best_meet, best_is_goal = length, node, is_goal
+
+    if start in b_depth:
+        candidate(start, 0)
+    stats()
+    while f_frontier:
+        # All forward paths below `best_length` must be accounted for since
+        # the reverse seeds may omit genuine goal configurations.
+        if best_meet is not None and f_depth[f_frontier[0]] >= best_length:
+            break
+        stats()
+        forward = best_meet is not None or not b_frontier or len(f_frontier) <= len(b_frontier)
+        next_layer = []
+        if forward:
+            for state in f_frontier:
+                metrics.nodes_expanded += 1
+                metrics.explored_order.append(state.bot_pos)
+                for action, nxt, _c in env.get_successors(state):
+                    metrics.nodes_generated += 1
+                    if nxt in f_depth:
+                        continue
+                    f_depth[nxt] = f_depth[state] + 1
+                    f_parent[nxt] = (state, action.value)
+                    next_layer.append(nxt)
+                    if env.is_goal(nxt):
+                        candidate(nxt, f_depth[nxt], True)
+                    if nxt in b_depth:
+                        candidate(nxt, f_depth[nxt] + b_depth[nxt])
+            f_frontier = next_layer
+        else:
+            for state in b_frontier:
+                metrics.nodes_expanded += 1
+                metrics.explored_order.append(state.bot_pos)
+                for action, prev, _c in env.get_predecessors(state):
+                    metrics.nodes_generated += 1
+                    if prev in b_depth:
+                        continue
+                    b_depth[prev] = b_depth[state] + 1
+                    b_next[prev] = (state, action.value)
+                    next_layer.append(prev)
+                    if prev in f_depth:
+                        candidate(prev, f_depth[prev] + b_depth[prev])
+            b_frontier = next_layer
+        stats()
+
+    if best_meet is None:
+        metrics.status_message = "No solution found."
+        return metrics
+    actions = _reconstruct_path(f_parent, best_meet)
+    if not best_is_goal:
+        node = best_meet
+        while b_next[node][0] is not None:
+            nxt, act = b_next[node]
+            actions.append(act)
+            node = nxt
+    # Source of truth: execute the reconstructed forward actions.
+    final_state = start
+    cost = 0
+    for act in actions:
+        final_state, step_cost = env.transition(final_state, act)
+        cost += step_cost
+    if not env.is_goal(final_state):
+        raise AssertionError("Backward path failed replay; predecessor contract violated")
+    metrics.solved = True
+    metrics.solution_actions = actions
+    metrics.total_cost = cost
+    metrics.status_message = "Solved (shortest step count certified)."
+    return metrics
 
 
 # =============================================================================
@@ -336,20 +440,97 @@ def uniform_cost_search(env: DeepCoreEnv) -> Optional[SearchMetrics]:
     return metrics
 
 
+def _best_first(
+    env: DeepCoreEnv,
+    heuristic: Callable[[DeepCoreState, DeepCoreEnv], float],
+    name: str,
+    weight: float,
+    use_g: bool,
+    reopen: bool,
+) -> SearchMetrics:
+    """
+    Shared engine for GBFS / A* / Weighted A*.
+
+    priority = (g if use_g else 0) + weight * h.  Entries are
+    (priority, h, tie_counter, g, state); the tie-breaker prefers smaller h and
+    then the oldest node, and the counter keeps DeepCoreState comparison out of
+    the heap.  States with h = inf are provably dead and are pruned.
+    """
+    metrics = SearchMetrics(algorithm_name=name)
+    start = env.get_initial_state()
+    h_cache: Dict[DeepCoreState, float] = {}
+
+    def h_of(s: DeepCoreState) -> float:
+        v = h_cache.get(s)
+        if v is None:
+            v = heuristic(s, env)
+            h_cache[s] = v
+        return v
+
+    counter = itertools.count()
+    h0 = h_of(start)
+    if h0 == INF:
+        metrics.status_message = "No solution found."
+        return metrics
+    frontier: List[Tuple[float, float, int, int, DeepCoreState]] = [
+        ((0 if use_g else 0) + weight * h0, h0, next(counter), 0, start)
+    ]
+    best_g: Dict[DeepCoreState, int] = {start: 0}
+    parent: Dict[DeepCoreState, Tuple[Optional[DeepCoreState], Optional[str]]] = {start: (None, None)}
+    closed: Set[DeepCoreState] = set()
+
+    while frontier:
+        metrics.max_frontier_size = max(metrics.max_frontier_size, len(frontier))
+        metrics.max_memory_size = max(metrics.max_memory_size, len(frontier) + len(closed))
+        _, _, _, g, state = heapq.heappop(frontier)
+        if g > best_g[state]:
+            continue  # stale entry
+        if state in closed and not reopen:
+            continue
+        if env.is_goal(state):
+            return _finish_solved(metrics, parent, state, g)
+        closed.add(state)
+        metrics.nodes_expanded += 1
+        metrics.explored_order.append(state.bot_pos)
+
+        for action, nxt, step_cost in env.get_successors(state):
+            metrics.nodes_generated += 1
+            ng = g + step_cost
+            if nxt in best_g:
+                if not use_g:
+                    continue                      # GBFS: first discovery wins
+                if ng >= best_g[nxt]:
+                    continue                      # no improvement
+            h = h_of(nxt)
+            if h == INF:
+                continue
+            best_g[nxt] = ng
+            parent[nxt] = (state, action.value)
+            prio = (ng if use_g else 0) + weight * h
+            heapq.heappush(frontier, (prio, h, next(counter), ng, nxt))
+
+    metrics.status_message = "No solution found."
+    return metrics
 
 
 def greedy_best_first_search(
     env: DeepCoreEnv, heuristic: Callable[[DeepCoreState, DeepCoreEnv], float]
 ) -> Optional[SearchMetrics]:
-    """TODO: Implement Greedy Best-First Search ordering the priority queue strictly by h(n)."""
-    raise NotImplementedError
+    """Greedy Best-First Graph Search: priority = h(n) only (fast, neither optimal nor cost-aware)."""
+    return _best_first(env, heuristic, "GBFS", weight=1.0, use_g=False, reopen=False)
 
 
 def a_star_search(
     env: DeepCoreEnv, heuristic: Callable[[DeepCoreState, DeepCoreEnv], float]
 ) -> Optional[SearchMetrics]:
-    """TODO: Implement A* Graph Search ordering the priority queue by f(n) = g(n) + h(n)."""
-    raise NotImplementedError
+    """
+    A* Graph Search: priority = f(n) = g(n) + h(n).
+
+    A cheaper path to an already generated state replaces the old one and the
+    state is re-opened, so the result stays optimal for any admissible
+    heuristic, even a non-consistent one.
+    """
+    return _best_first(env, heuristic, "A*", weight=1.0, use_g=True, reopen=True)
 
 
 # =============================================================================
