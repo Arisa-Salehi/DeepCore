@@ -8,7 +8,7 @@ Student implementation file for DeepCore search algorithms.
   function signatures or the environment/state modules.
 """
 
-from collections import deque
+from collections import deque, OrderedDict
 import heapq
 import itertools
 import math
@@ -541,8 +541,10 @@ def weighted_a_star_search(
     heuristic: Callable[[DeepCoreState, DeepCoreEnv], float],
     weight: float = 1.5,
 ) -> Optional[SearchMetrics]:
-    """TODO (Bonus): Implement Weighted A* ordering the frontier by f(n) = g(n) + W * h(n)."""
-    raise NotImplementedError
+    """Weighted A*: f(n) = g(n) + W*h(n); the solution costs at most W times the optimum."""
+    if weight < 1.0:
+        raise ValueError("Weighted A* requires weight >= 1.")
+    return _best_first(env, heuristic, f"WA*(W={weight:g})", weight=weight, use_g=True, reopen=True)
 
 
 # =============================================================================
@@ -553,8 +555,95 @@ def ida_star_search(
     heuristic: Callable[[DeepCoreState, DeepCoreEnv], float],
     max_expansions: Optional[int] = None,
 ) -> Optional[SearchMetrics]:
-    """TODO (Bonus): Implement Iterative Deepening A* (IDA*) using f-cost threshold contours."""
-    raise NotImplementedError
+    """IDA* with O(b*d) memory and a depth-proportional duplicate window.
+
+    Each contour uses a DFS stack, an active-path set, and at most 128*d
+    contour-local transposition entries, where d is the deepest current path.
+    No unbounded global visited/successor/heuristic cache is retained by this
+    algorithm. The static relaxed heuristic itself has a per-map pattern DB.
+    """
+    metrics = SearchMetrics(algorithm_name="IDA*")
+    start = env.get_initial_state()
+    if env.is_goal(start):
+        metrics.solved = True
+        metrics.status_message = "Solved."
+        return metrics
+    threshold = heuristic(start, env)
+    if threshold == INF:
+        metrics.status_message = "No solution found."
+        return metrics
+
+    # Each frame contains [state, g, entered, [(action, successor, cost),...], i]
+    while True:
+        frames = [[start, 0, False, None, 0]]
+        on_path = {start}
+        actions = []
+        next_bound = INF
+        # A strictly bounded contour-local transposition window: at most
+        # 128 * maximum active path depth entries (O(depth), never all states).
+        recent_best = OrderedDict()
+        max_path_depth = 1
+
+        def pop_frame():
+            state = frames.pop()[0]
+            on_path.remove(state)
+            if frames:
+                actions.pop()
+
+        while frames:
+            metrics.max_frontier_size = max(metrics.max_frontier_size, len(frames))
+            # Only path states and at most b successors per path frame are held.
+            max_path_depth = max(max_path_depth, len(frames))
+            metrics.max_memory_size = max(metrics.max_memory_size,
+                                          len(on_path) + len(recent_best)
+                                          + sum(len(f[3] or ()) for f in frames))
+            f = frames[-1]
+            state, g = f[:2]
+            if not f[2]:
+                estimate = g + heuristic(state, env)
+                if estimate > threshold:
+                    next_bound = min(next_bound, estimate)
+                    pop_frame()
+                    continue
+                if env.is_goal(state):
+                    metrics.solved = True
+                    metrics.solution_actions = list(actions)
+                    metrics.total_cost = g
+                    metrics.status_message = "Solved."
+                    return metrics
+                prev_g = recent_best.get(state)
+                if prev_g is not None and prev_g <= g:
+                    pop_frame()
+                    continue
+                recent_best[state] = g
+                recent_best.move_to_end(state)
+                while len(recent_best) > max_path_depth * 128:
+                    recent_best.popitem(last=False)
+                if max_expansions is not None and metrics.nodes_expanded >= max_expansions:
+                    metrics.status_message = LIMIT_MESSAGE
+                    return metrics
+                f[2] = True
+                f[3] = sorted(env.get_successors(state),
+                              key=lambda arc: (g + arc[2] + heuristic(arc[1], env),
+                                               -arc[2]))
+                metrics.nodes_expanded += 1
+                metrics.explored_order.append(state.bot_pos)
+                metrics.nodes_generated += len(f[3])
+            if f[4] >= len(f[3]):
+                pop_frame()
+                continue
+            action, nxt, step_cost = f[3][f[4]]
+            f[4] += 1
+            if nxt in on_path:
+                continue
+            on_path.add(nxt)
+            actions.append(action.value)
+            frames.append([nxt, g + step_cost, False, None, 0])
+
+        if next_bound == INF:
+            metrics.status_message = "No solution found."
+            return metrics
+        threshold = next_bound
 
 
 # =============================================================================
