@@ -1,0 +1,222 @@
+[
+  {
+    "map": "LEVEL1",
+    "initial": {
+      "h0": 4.0,
+      "literal_mst": 30.0,
+      "h1": 50.0,
+      "wall_mst": 42.0,
+      "h2": 68.0
+    },
+    "algorithms": {
+      "UCS": {
+        "total_cost": 68,
+        "nodes_expanded": 245,
+        "nodes_generated": 583,
+        "max_frontier_size": 19,
+        "runtime_sec": 0.0035,
+        "replay_valid": true
+      },
+      "A*(H0)": {
+        "total_cost": 68,
+        "nodes_expanded": 234,
+        "nodes_generated": 561,
+        "max_frontier_size": 20,
+        "runtime_sec": 0.0046,
+        "replay_valid": true
+      },
+      "A*(H1)": {
+        "total_cost": 68,
+        "nodes_expanded": 79,
+        "nodes_generated": 188,
+        "max_frontier_size": 17,
+        "runtime_sec": 0.0023,
+        "replay_valid": true
+      },
+      "A*(H2)": {
+        "total_cost": 68,
+        "nodes_expanded": 28,
+        "nodes_generated": 68,
+        "max_frontier_size": 16,
+        "runtime_sec": 0.0025,
+        "replay_valid": true
+      }
+    }
+  },
+  {
+    "map": "LEVEL2",
+    "initial": {
+      "h0": 12.0,
+      "literal_mst": 85.0,
+      "h1": 117.0,
+      "wall_mst": 93.0,
+      "h2": 142.0
+    },
+    "algorithms": {
+      "UCS": {
+        "total_cost": 162,
+        "nodes_expanded": 205619,
+        "nodes_generated": 541331,
+        "max_frontier_size": 10642,
+        "runtime_sec": 3.696,
+        "replay_valid": true
+      },
+      "A*(H0)": {
+        "total_cost": 162,
+        "nodes_expanded": 171186,
+        "nodes_generated": 450564,
+        "max_frontier_size": 9935,
+        "runtime_sec": 3.7217,
+        "replay_valid": true
+      },
+      "A*(H1)": {
+        "total_cost": 162,
+        "nodes_expanded": 5627,
+        "nodes_generated": 15058,
+        "max_frontier_size": 924,
+        "runtime_sec": 0.1275,
+        "replay_valid": true
+      },
+      "A*(H2)": {
+        "total_cost": 162,
+        "nodes_expanded": 272,
+        "nodes_generated": 732,
+        "max_frontier_size": 80,
+        "runtime_sec": 0.0148,
+        "replay_valid": true
+      }
+    }
+  },
+  {
+    "map": "LEVEL3",
+    "initial": {
+      "h0": 13.0,
+      "literal_mst": 75.0,
+      "h1": 120.0,
+      "wall_mst": 93.0,
+      "h2": 130.0
+    },
+    "algorithms": {
+      "UCS": {
+        "total_cost": 154,
+        "nodes_expanded": 24775,
+        "nodes_generated": 60073,
+        "max_frontier_size": 817,
+        "runtime_sec": 0.3913,
+        "replay_valid": true
+      },
+      "A*(H0)": {
+        "total_cost": 154,
+        "nodes_expanded": 22946,
+        "nodes_generated": 55609,
+        "max_frontier_size": 908,
+        "runtime_sec": 0.3978,
+        "replay_valid": true
+      },
+      "A*(H1)": {
+        "total_cost": 154,
+        "nodes_expanded": 1392,
+        "nodes_generated": 3445,
+        "max_frontier_size": 303,
+        "runtime_sec": 0.0269,
+        "replay_valid": true
+      },
+      "A*(H2)": {
+        "total_cost": 154,
+        "nodes_expanded": 412,
+        "nodes_generated": 1006,
+        "max_frontier_size": 122,
+        "runtime_sec": 0.0135,
+        "replay_valid": true
+      }
+    }
+  },
+  {
+    "map": "LEVEL4",
+    "initial": {
+      "h0": 7.0,
+      "literal_mst": 66.0,
+      "h1": 109.0,
+      "wall_mst": 82.0,
+      "h2": 129.0
+    },
+    "algorithms": {
+      "UCS": {
+        "total_cost": 141,
+        "nodes_expanded": 214814,
+        "nodes_generated": 637338,
+        "max_frontier_size": 7788,
+        "runtime_sec": 4.1437,
+        "replay_valid": true
+      },
+      "A*(H0)": {
+        "total_cost": 141,
+        "nodes_expanded": 205913,
+        "nodes_generated": 611455,
+        "max_frontier_size": 8282,
+        "runtime_sec": 4.3878,
+        "replay_valid": true
+      },
+      "A*(H1)": {
+        "total_cost": 141,
+        "nodes_expanded": 3382,
+        "nodes_generated": 10602,
+        "max_frontier_size": 1187,
+        "runtime_sec": 0.0874,
+        "replay_valid": true
+      },
+      "A*(H2)": {
+        "total_cost": 141,
+        "nodes_expanded": 231,
+        "nodes_generated": 712,
+        "max_frontier_size": 133,
+        "runtime_sec": 0.0127,
+        "replay_valid": true
+      }
+    }
+  },
+  {
+    "map": "LEVEL5",
+    "initial": {
+      "h0": 15.0,
+      "literal_mst": 84.0,
+      "h1": 139.0,
+      "wall_mst": 107.0,
+      "h2": 149.0
+    },
+    "algorithms": {
+      "UCS": {
+        "total_cost": 174,
+        "nodes_expanded": 49736,
+        "nodes_generated": 134967,
+        "max_frontier_size": 1556,
+        "runtime_sec": 0.8353,
+        "replay_valid": true
+      },
+      "A*(H0)": {
+        "total_cost": 174,
+        "nodes_expanded": 46440,
+        "nodes_generated": 126238,
+        "max_frontier_size": 1672,
+        "runtime_sec": 0.9265,
+        "replay_valid": true
+      },
+      "A*(H1)": {
+        "total_cost": 174,
+        "nodes_expanded": 1954,
+        "nodes_generated": 5366,
+        "max_frontier_size": 431,
+        "runtime_sec": 0.0465,
+        "replay_valid": true
+      },
+      "A*(H2)": {
+        "total_cost": 174,
+        "nodes_expanded": 608,
+        "nodes_generated": 1647,
+        "max_frontier_size": 185,
+        "runtime_sec": 0.0233,
+        "replay_valid": true
+      }
+    }
+  }
+]

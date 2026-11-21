@@ -1,0 +1,52 @@
+[
+  {
+    "map": "LEVEL1",
+    "unique_states_discovered": 316,
+    "unique_states_property_checked": 316,
+    "states_expanded": 316,
+    "edges_consistency_checked": 756,
+    "passed": true,
+    "runtime_seconds": 0.025,
+    "coverage": "bounded BFS; not exhaustive entire map state-space"
+  },
+  {
+    "map": "LEVEL2",
+    "unique_states_discovered": 6000,
+    "unique_states_property_checked": 6000,
+    "states_expanded": 4989,
+    "edges_consistency_checked": 13493,
+    "passed": true,
+    "runtime_seconds": 0.489,
+    "coverage": "bounded BFS; not exhaustive entire map state-space"
+  },
+  {
+    "map": "LEVEL3",
+    "unique_states_discovered": 6000,
+    "unique_states_property_checked": 6000,
+    "states_expanded": 5377,
+    "edges_consistency_checked": 13190,
+    "passed": true,
+    "runtime_seconds": 0.425,
+    "coverage": "bounded BFS; not exhaustive entire map state-space"
+  },
+  {
+    "map": "LEVEL4",
+    "unique_states_discovered": 6000,
+    "unique_states_property_checked": 6000,
+    "states_expanded": 4138,
+    "edges_consistency_checked": 13391,
+    "passed": true,
+    "runtime_seconds": 0.486,
+    "coverage": "bounded BFS; not exhaustive entire map state-space"
+  },
+  {
+    "map": "LEVEL5",
+    "unique_states_discovered": 6000,
+    "unique_states_property_checked": 6000,
+    "states_expanded": 5318,
+    "edges_consistency_checked": 14709,
+    "passed": true,
+    "runtime_seconds": 0.503,
+    "coverage": "bounded BFS; not exhaustive entire map state-space"
+  }
+]

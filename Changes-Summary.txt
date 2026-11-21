@@ -1,0 +1,75 @@
+FINAL H1 REVALIDATION ENTRY — 19 NOV 2026
+========================================
+Code changed (compared with uploaded DeepCore-PERFECT-SUBMISSION.zip):
+  src/deepcore/heuristics.py: scoped memoization of exact Manhattan/wall MST+
+  payload calculations by (metric, bot position, miner set, carried count).
+  No H1/H2 return values or solver algorithms were intentionally changed.
+  The exact professor H1 formula is still explicitly evaluated. The relaxed
+  consistent H1 remains the returned stronger bound, because literal H1 is
+  inconsistent on a reachable Level 1 transition: 30 > 1 + 28.
+
+Evidence added:
+  validation/h1_h2_audit.py (reproducible property and benchmark runner)
+  validation/h1_h2_property_audit.json (24,316 states, 55,539 legal edges)
+  validation/h1_h2_benchmark.json (5 maps x UCS, A*(H0/H1/H2))
+  validation/FINAL_H1_VERIFICATION.md (scope, rerun instructions, limitations)
+  Report.pdf: original seven pages retained; three H1/verification appendices.
+
+Retested: 9/9 teacher tests PASS; 15/15 supplemental tests PASS; 8/8
+independent validation methods PASS in split invocations. A full independent
+suite single process was attempted but timed out here: NOT counted as a fresh
+single-process PASS. H1/H2 matched original values on 20,138 explored states.
+All five maps A* with H0/H1/H2 matched UCS optimal energy; A* metrics unchanged.
+Protected professor files, original test files, and H0 were NOT modified.
+
+The following records are original historical evidence from the uploaded ZIP.
+-------------------------------------------------------------------------
+
+DEEPCORE - FINAL CHANGE LOG - 2026-11-19
+========================================
+Source: DeepCore-FINAL-CORRECTED.zip (previously tested corrected version).
+Only source change relative to that baseline: src/deepcore/solver.py.
+Relative to teacher original, ONLY solver.py and heuristics.py differ.
+
+SMA* REPLACEMENT (GENUINE MEMORY-BOUNDED BEST-FIRST, NOT A*/IDA*):
+- Replaced stale/incomplete-parent selection with a frontier of unexpanded resident
+  leaves AND per-successor forgotten branch slots ranked by backed-up f.
+- Preserved cost g, pathmax lower bound, every child edge and backed-up f on
+  eviction, with recursive min f propagation to the root.
+- Eviction chooses highest-f shallowest resident leaf not on selected path.
+- Forgotten branches regenerate using their learned bound, never reset g+h.
+- Replaced unsound global live-state duplication suppression with bounded
+  resident-only dominance (g no higher AND depth no greater); otherwise allow
+  distinct live paths, with ancestor-cycle prevention.
+- Deterministic tie-breaking by stable per-node generation order and branch index.
+- Kept real bound M on resident tree-node records; branch metadata O(b*M) and
+  heuristic PDB memory are explicitly excluded, not misrepresented as bytes.
+- Retained 180000-iteration safety stop as a truthful INCOMPLETE status, not
+  increased as a substitute for fixing the algorithm.
+- Added exact remaining-action infeasibility checks for insufficient node depth.
+
+H1/H2:
+- Retained correct and fast exact abstract H1 and H2, cached wall BFS distances,
+  explicitly computed MST equations and certified structural corner deadlocks.
+- Literal assignment MST equation has real admissible but inconsistent edge:
+  Level1 MOVE_N, 30 > 1 + 28. Report documents strict output-equality risk.
+- Verified H0<=H1<=H2<=h*, edge consistency, no over-pruning via random maps.
+
+NEW VALIDATION ARTIFACTS:
+- validation/test_perfect_sma.py: 9 independent cases (random, repetitions,
+  low memory, regenerated branches, exact cost-to-go and depth-limited DP).
+- validation/perfect_benchmark.py: reproducible 35 SMA cap trials plus 15
+  uninformed path audits. Fresh JSON evidence replaces stale sweep records.
+- Re-ran 55 algorithm combinations and all 32 methods across four test suites.
+- Rebuilt Report.pdf, Final-Grading-Audit.pdf, Complete-Test-Results.txt.
+
+IMPORTANT LIMITATIONS:
+- Level5 at M48 yields cost178; exact DP proves no 174-cost solution exists
+  among routes of <=47 steps. At M64 SMA* reaches optimal 174.
+- Sufficient memory is needed for unrestricted optimality; no unsupported
+  universal completeness claim made for tiny M.
+- Root launcher requires pygame-ce availability in offline environment.
+- Instructor-owned code, rubric, student guide, test files and UI/assets
+  remain byte-identical to DeepCore-student.zip.
+
+POST-EXTRACTION CHECK: teacher 9/9, independent 8/8 and new+earlier 15/15 PASS; package CLI PASS.

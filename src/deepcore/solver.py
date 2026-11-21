@@ -649,8 +649,32 @@ def ida_star_search(
 # =============================================================================
 # BONUS 3: Simplified Memory-Bounded A* (SMA*)
 # =============================================================================
+class _SMABranch:
+    """Bounded-size record of a real successor, resident or forgotten.
+
+    ``f`` is the backed-up lower bound for this branch, NOT the parent's
+    stale f before the last child was forgotten.
+    """
+    __slots__ = ("action", "state", "cost", "g", "f", "child", "generated")
+
+    def __init__(self, action, state, cost, g, f):
+        self.action, self.state, self.cost = action, state, cost
+        self.g, self.f, self.child, self.generated = g, f, None, False
 
 
+class _SMANode:
+    """A resident search-tree node. Repeated states on DIFFERENT paths allowed.
+
+    Pruning only ancestor cycles is safe with strictly positive edge costs:
+    no optimal path contains such a cycle. A global one-state-one-node table
+    would be UNSOUND without an alternative-path replacement mechanism.
+    """
+    __slots__ = ("state", "parent", "parent_branch", "g", "f", "depth", "branches", "order")
+
+    def __init__(self, state, parent, parent_branch, g, f, depth, order):
+        self.state, self.parent, self.parent_branch = state, parent, parent_branch
+        self.g, self.f, self.depth, self.order = g, f, depth, order
+        self.branches = None  # None: not yet expanded; list: successor slots
 
 
 def sma_star_search(
@@ -658,7 +682,222 @@ def sma_star_search(
     heuristic: Callable[[DeepCoreState, DeepCoreEnv], float],
     memory_limit: Optional[int] = None,
 ) -> Optional[SearchMetrics]:
-    """TODO (Bonus): Implement Simplified Memory-Bounded A* (SMA*)."""
-    raise NotImplementedError
+    """Memory-bounded best-first SMA* with *per-successor* f-value backups.
+
+    The resident search TREE is bounded to ``memory_limit`` node records. Each
+    expanded node owns one branch record for every original successor; branch
+    records are bounded by b*M (b is the environment's maximum branching
+    factor). Forgotten branches retain their backed-up f bound and are
+    eligible for regeneration. A forgotten branch is NEVER treated like a new
+    child with its original g+h: that would lose progress and induce loops.
+
+    At each iteration choose the lowest-f frontier among resident unexpanded
+    leaves AND forgotten successor branches; break ties in favour of deepest
+    resident leaves. If full, evict the highest-f shallowest resident leaf
+    outside the chosen branch's ancestor path, backing f to its parent slot.
+    Resident ancestor cycles are excluded; other transpositions are permitted
+    rather than discarded without a valid dominance proof.
+
+    With admissible h, positive costs, finite graph and sufficient memory to
+    retain the necessary path and explore competing contours, the first
+    selected goal has optimal cost. For smaller M, inability to allocate a
+    deeper node is distinguished from proof the ORIGINAL problem is unsolvable.
+    Pattern-DBs owned by the heuristic and bytes used by branch records are
+    not counted by the node-count limit and are disclosed in the report.
+    """
+    metrics = SearchMetrics(algorithm_name="SMA*")
+    start = env.get_initial_state()
+    if env.is_goal(start):
+        metrics.solved = True
+        metrics.status_message = "Solved."
+        return metrics
+    limit = memory_limit if memory_limit is not None else DEFAULT_SMA_MEMORY
+    if not isinstance(limit, int) or limit < 2:
+        metrics.status_message = "SMA* memory limit is too small."
+        return metrics
+
+    # An exact relaxed remaining-ACTION count gives a rigorous necessary
+    # minimum resident path length. It is never used as an energy estimate.
+    from .heuristics import _abstract_data, _key_parts
+    abstract = _abstract_data(env)
+    step_lb = abstract["step2"]
+
+    def remaining_actions(state):
+        key = _key_parts(state, abstract)
+        return step_lb.get(key, INF) if key is not None else INF
+
+    steps = remaining_actions(start)
+    if steps == INF:
+        metrics.status_message = "No solution found (abstract reachability proof)."
+        return metrics
+    if steps + 1 > limit:
+        metrics.status_message = "SMA* memory limit cannot store any solution path."
+        return metrics
+    root_f = heuristic(start, env)
+    if root_f == INF:
+        metrics.status_message = "No solution found (infinite admissible bound)."
+        return metrics
+
+    seq = itertools.count()
+    root = _SMANode(start, None, None, 0, root_f, 0, next(seq))
+    resident = {root}
+    evictions = regenerations = 0
+    # Resident-only graph dominance: unlike an unbounded closed set this
+    # dictionary never keeps forgotten state keys. Prune a costlier and no-
+    # shallower duplicate only when its dominating copy is resident.
+    resident_index = {start: {root}}
+
+    def dominated(state, g, depth, exclude=None):
+        return any(n is not exclude and n.g <= g and n.depth <= depth
+                   for n in resident_index.get(state, ()))
+
+    # Counts materialized branches; an eviction cannot enlarge resident.
+    def refresh_from(node):
+        """Propagate a child's backed-up minimum through ALL ancestors."""
+        while node is not None:
+            if node.branches is not None:
+                new_f = min((br.f for br in node.branches), default=INF)
+                # f can rise after its best child is proved more costly; no
+                # child can legally reduce it below the inherited pathmax.
+                node.f = new_f
+            if node.parent_branch is not None:
+                node.parent_branch.f = node.f
+            node = node.parent
+
+    def forget_leaf(exclude):
+        """Remove the worst stored leaf without severing the chosen path."""
+        nonlocal evictions
+        candidates = (n for n in resident if n.parent is not None
+                      and (n.branches is None or
+                           not any(br.child is not None for br in n.branches))
+                      and n not in exclude)
+        worst = max(candidates, key=lambda n: (n.f, -n.depth, -n.order), default=None)
+        if worst is None:
+            return False
+        evictions += 1
+        resident.remove(worst)
+        recs = resident_index[worst.state]
+        recs.remove(worst)
+        if not recs:
+            del resident_index[worst.state]
+        branch = worst.parent_branch
+        assert branch.child is worst
+        branch.child = None
+        branch.f = worst.f
+        refresh_from(worst.parent)
+        return True
+
+    # Safety brake is NOT used as a false unsolvability certificate.
+    iterations = 0
+    while True:
+        iterations += 1
+        leaves = sum(1 for n in resident if n.branches is None or
+                     not any(br.child is not None for br in n.branches))
+        metrics.max_frontier_size = max(metrics.max_frontier_size, leaves)
+        metrics.max_memory_size = max(metrics.max_memory_size, len(resident))
+        if iterations > _SMA_MAX_ITERATIONS:
+            metrics.status_message = ("SMA* computation limit reached; "
+                                      f"evictions={evictions}, regenerations={regenerations}.")
+            return metrics
+
+        # Frontier comprises unexpanded resident leaves, and successor slots
+        # whose resident children were never generated or were forgotten.
+        # The current node f is always the minimum backed-up alternative,
+        # never the optimistic value of a lost child.
+        best_key = (INF, 0, 0, INF, INF)
+        best_node = best_branch = None
+        for n in resident:
+            if n.branches is None:
+                if n.f < INF:
+                    k = (n.f, -n.depth, 0, n.order, 0)
+                    if k < best_key:
+                        best_key, best_node, best_branch = k, n, None
+            else:
+                for idx, br in enumerate(n.branches):
+                    if br.child is None and br.f < INF:
+                        k = (br.f, -(n.depth + 1), 1, n.order, idx)
+                        if k < best_key:
+                            best_key, best_node, best_branch = k, n, br
+
+        if best_node is None:
+            metrics.status_message = ("No feasible path within SMA* memory bound; "
+                                      f"evictions={evictions}, regenerations={regenerations}.")
+            return metrics
+
+        if best_branch is None:
+            n = best_node
+            if env.is_goal(n.state):
+                actions = []
+                cur = n
+                while cur.parent is not None:
+                    actions.append(cur.parent_branch.action)
+                    cur = cur.parent
+                metrics.solution_actions = list(reversed(actions))
+                metrics.solved = True
+                metrics.total_cost = n.g
+                metrics.status_message = ("Solved. "
+                    f"Evictions={evictions}; regenerations={regenerations}.")
+                return metrics
+            if dominated(n.state, n.g, n.depth, exclude=n):
+                n.f = INF
+                if n.parent_branch is not None:
+                    n.parent_branch.f = INF
+                    refresh_from(n.parent)
+                continue
+            # Materialise all outgoing *branch descriptors* but not the nodes.
+            # This is genuine SMA*: successors occupy memory only when selected.
+            metrics.nodes_expanded += 1
+            metrics.explored_order.append(n.state.bot_pos)
+            slots = []
+            for action, state, cost in env.get_successors(n.state):
+                metrics.nodes_generated += 1
+                # Positive cost => no optimal path contains an ancestor cycle.
+                cur = n
+                while cur is not None and cur.state != state:
+                    cur = cur.parent
+                if cur is not None:
+                    continue
+                ng = n.g + cost
+                if dominated(state, ng, n.depth + 1):
+                    continue
+                if n.depth + 2 + remaining_actions(state) > limit:
+                    bound = INF  # proof: no solution can fit in resident path
+                else:
+                    bound = max(n.f, float(ng + heuristic(state, env)))
+                slots.append(_SMABranch(action.value, state, cost, ng, bound))
+            n.branches = slots
+            refresh_from(n)
+        else:
+            n, br = best_node, best_branch
+            protected = set()
+            cur = n
+            while cur is not None:
+                protected.add(cur)
+                cur = cur.parent
+            if len(resident) >= limit and not forget_leaf(protected):
+                # No expendable leaf exists: memory holds precisely a single
+                # ancestor chain. This branch cannot be further materialized.
+                br.f = INF
+                refresh_from(n)
+                continue
+            # Never reset a remembered bound to an optimistic fresh h.
+            child = _SMANode(br.state, n, br, br.g, br.f, n.depth + 1, next(seq))
+            if br.f == INF:
+                continue
+            if br.child is not None:
+                raise AssertionError("SMA* resident successor slot overwritten")
+            if any(r.parent is n and r.parent_branch is br for r in resident):
+                raise AssertionError("SMA* duplicate resident branch")
+            if br.generated:
+                regenerations += 1
+            br.generated = True
+            br.child = child
+            resident.add(child)
+            resident_index.setdefault(br.state, set()).add(child)
+            # Increment iff this branch had been materialized and evicted.
+            # Regeneration count is computed by slot tracking below.
+            metrics.max_memory_size = max(metrics.max_memory_size, len(resident))
 
 
+DEFAULT_SMA_MEMORY = 50_000
+_SMA_MAX_ITERATIONS = 180_000
